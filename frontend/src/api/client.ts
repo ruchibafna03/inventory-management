@@ -39,6 +39,8 @@ export interface Item {
   tag?: string
   narr1?: string
   narr2?: string
+  recpt_date?: string
+  issue_date?: string
   created_at: string
   updated_at: string
 }
