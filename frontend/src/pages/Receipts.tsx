@@ -23,13 +23,13 @@ export default function Receipts() {
   const load = (p = page) => {
     setLoading(true)
     receiptsApi.list({ page: p, per_page: 50 })
-      .then(r => { setReceipts(r.data.data); setTotal(r.data.total) })
+      .then(r => { setReceipts(r.data.data || []); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     load()
-    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data))
+    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data || []))
   }, [])
 
   const openCreate = () => {

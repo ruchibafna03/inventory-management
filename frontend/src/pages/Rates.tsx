@@ -14,7 +14,7 @@ export default function Rates() {
 
   const load = () => {
     setLoading(true)
-    ratesApi.list().then(r => setRates(r.data)).finally(() => setLoading(false))
+    ratesApi.list().then(r => setRates(r.data || [])).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])

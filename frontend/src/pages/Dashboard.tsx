@@ -28,7 +28,7 @@ export default function Dashboard() {
         totalSales: sales.data.total,
       })
       setLatestRate(rate?.data ?? null)
-      setRecentIssues(issues.data.data)
+      setRecentIssues(issues.data.data || [])
     }).finally(() => setLoading(false))
   }, [])
 

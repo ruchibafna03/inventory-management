@@ -24,13 +24,13 @@ export default function Issues() {
   const load = (p = page) => {
     setLoading(true)
     issuesApi.list({ page: p, per_page: 50 })
-      .then(r => { setIssues(r.data.data); setTotal(r.data.total) })
+      .then(r => { setIssues(r.data.data || []); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     load()
-    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data))
+    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data || []))
   }, [])
 
   const openCreate = () => {

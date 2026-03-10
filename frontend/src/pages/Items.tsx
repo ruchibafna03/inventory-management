@@ -24,7 +24,7 @@ export default function Items() {
   const load = (p = page, s = search) => {
     setLoading(true)
     itemsApi.list({ page: p, per_page: 50, search: s })
-      .then(r => { setItems(r.data.data); setTotal(r.data.total) })
+      .then(r => { setItems(r.data.data || []); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
 

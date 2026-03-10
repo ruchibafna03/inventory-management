@@ -16,12 +16,12 @@ export default function Lots() {
 
   const load = () => {
     setLoading(true)
-    lotsApi.list().then(r => setLots(r.data)).finally(() => setLoading(false))
+    lotsApi.list().then(r => setLots(r.data || [])).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     load()
-    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data))
+    accountsApi.list({ per_page: 500 }).then(r => setAccounts(r.data.data || []))
   }, [])
 
   const openCreate = () => { setEditing(null); form.resetFields(); form.setFieldsValue({ t_date: dayjs() }); setModalOpen(true) }

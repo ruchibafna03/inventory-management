@@ -31,7 +31,7 @@ export default function Purchases() {
 
   const load = (p = page) => {
     setLoading(true)
-    api.list({ page: p, per_page: 50 }).then(r => { setData(r.data.data); setTotal(r.data.total) }).finally(() => setLoading(false))
+    api.list({ page: p, per_page: 50 }).then(r => { setData(r.data.data || []); setTotal(r.data.total) }).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])

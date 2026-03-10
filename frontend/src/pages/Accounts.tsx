@@ -22,12 +22,12 @@ export default function Accounts() {
   const [form] = Form.useForm()
   const [addrForm] = Form.useForm()
 
-  const loadGroups = () => accountsApi.listGroups().then(r => setGroups(r.data))
+  const loadGroups = () => accountsApi.listGroups().then(r => setGroups(r.data || []))
 
   const load = (p = page, s = search) => {
     setLoading(true)
     accountsApi.list({ page: p, per_page: 50, search: s })
-      .then(r => { setAccounts(r.data.data); setTotal(r.data.total) })
+      .then(r => { setAccounts(r.data.data || []); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
 

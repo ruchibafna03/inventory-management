@@ -21,7 +21,7 @@ export default function Sales() {
   const load = (p = page) => {
     setLoading(true)
     salesApi.list({ page: p, per_page: 50 })
-      .then(r => { setSales(r.data.data); setTotal(r.data.total) })
+      .then(r => { setSales(r.data.data || []); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
 
