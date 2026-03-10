@@ -30,6 +30,7 @@ func NewRouter(db *sqlx.DB) *chi.Mux {
 	accountRepo  := repository.NewAccountRepo(db)
 	rateRepo     := repository.NewRateRepo(db)
 	lotRepo      := repository.NewLotRepo(db)
+	utilRepo     := repository.NewUtilityRepo(db)
 
 	// Handlers
 	ih  := &ItemHandler{repo: itemRepo}
@@ -40,6 +41,7 @@ func NewRouter(db *sqlx.DB) *chi.Mux {
 	ah  := &AccountHandler{repo: accountRepo}
 	rah := &RateHandler{repo: rateRepo}
 	lh  := &LotHandler{repo: lotRepo}
+	uh  := &UtilityHandler{repo: utilRepo}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Items
@@ -134,6 +136,22 @@ func NewRouter(db *sqlx.DB) *chi.Mux {
 				r.Put("/", lh.Update)
 				r.Delete("/", lh.Delete)
 			})
+		})
+
+		// Utilities
+		r.Route("/utilities", func(r chi.Router) {
+			r.Get("/summary", uh.DataSummary)
+			r.Get("/orphan-issues", uh.OrphanIssueDetails)
+			r.Get("/orphan-receipts", uh.OrphanReceiptDetails)
+			r.Get("/stock-position", uh.StockPosition)
+			r.Get("/item-history/{itcd}", uh.ItemHistory)
+			r.Post("/change-item-code", uh.ChangeItemCode)
+			r.Get("/code-change-history", uh.CodeChangeHistory)
+			r.Get("/blocked-items", uh.BlockedItems)
+			r.Post("/blocked-items/{itcd}", uh.BlockItem)
+			r.Delete("/blocked-items/{itcd}", uh.UnblockItem)
+			r.Get("/users", uh.ListUsers)
+			r.Put("/password", uh.ChangePassword)
 		})
 	})
 

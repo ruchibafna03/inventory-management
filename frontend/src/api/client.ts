@@ -262,4 +262,82 @@ export const lotsApi = {
   delete: (tNo: string) => client.delete(`/lots/${tNo}`),
 }
 
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+export interface TableCount {
+  table: string
+  count: number
+}
+
+export interface OrphanDetail {
+  id: number
+  t_no: string
+  itcd: string
+  itdesc: string
+}
+
+export interface StockItem {
+  itcd: string
+  desc: string
+  purity?: string
+  gross_wt: number
+  net_wt: number
+  gold_wt: number
+  lot_no?: string
+  cat?: string
+  tag?: string
+  issue_no?: string
+  ac_code?: string
+  karigar_name: string
+}
+
+export interface HistoryEvent {
+  event_type: string
+  event_date: string
+  vouch_no: string
+  ac_code: string
+  party: string
+  gross_wt: number
+  net_wt: number
+  narr: string
+}
+
+export interface CodeChange {
+  id: number
+  itcdf: string
+  itcdt: string
+  date: string
+}
+
+export interface BlockedItem {
+  itcd: string
+  desc: string
+  gross_wt: number
+}
+
+export interface UserRecord {
+  id: number
+  username: string
+  full_name: string
+  role: string
+  active: boolean
+}
+
+export const utilitiesApi = {
+  summary: () => client.get<TableCount[]>('/utilities/summary'),
+  orphanIssues: () => client.get<OrphanDetail[]>('/utilities/orphan-issues'),
+  orphanReceipts: () => client.get<OrphanDetail[]>('/utilities/orphan-receipts'),
+  stockPosition: () => client.get<StockItem[]>('/utilities/stock-position'),
+  itemHistory: (itcd: string) => client.get<HistoryEvent[]>(`/utilities/item-history/${itcd}`),
+  changeItemCode: (from: string, to: string) =>
+    client.post('/utilities/change-item-code', { from, to }),
+  codeChangeHistory: () => client.get<CodeChange[]>('/utilities/code-change-history'),
+  blockedItems: () => client.get<BlockedItem[]>('/utilities/blocked-items'),
+  blockItem: (itcd: string) => client.post(`/utilities/blocked-items/${itcd}`, {}),
+  unblockItem: (itcd: string) => client.delete(`/utilities/blocked-items/${itcd}`),
+  listUsers: () => client.get<UserRecord[]>('/utilities/users'),
+  changePassword: (username: string, new_password: string) =>
+    client.put('/utilities/password', { username, new_password }),
+}
+
 export default client

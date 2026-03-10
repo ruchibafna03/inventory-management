@@ -10,6 +10,7 @@ import {
   TeamOutlined,
   AppstoreOutlined,
   LineChartOutlined,
+  ToolOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 
@@ -26,6 +27,7 @@ const menuItems = [
   { key: '/accounts',   icon: <TeamOutlined />,         label: 'Accounts' },
   { key: '/lots',       icon: <AppstoreOutlined />,     label: 'Lots' },
   { key: '/rates',      icon: <LineChartOutlined />,    label: 'Gold Rates' },
+  { key: '/utilities', icon: <ToolOutlined />,         label: 'Utilities' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {

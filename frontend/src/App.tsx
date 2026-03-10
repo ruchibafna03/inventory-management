@@ -9,6 +9,7 @@ import Purchases from './pages/Purchases'
 import Accounts from './pages/Accounts'
 import Lots from './pages/Lots'
 import Rates from './pages/Rates'
+import Utilities from './pages/Utilities'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/accounts/*" element={<Accounts />} />
         <Route path="/lots/*" element={<Lots />} />
         <Route path="/rates/*" element={<Rates />} />
+        <Route path="/utilities/*" element={<Utilities />} />
       </Routes>
     </Layout>
   )

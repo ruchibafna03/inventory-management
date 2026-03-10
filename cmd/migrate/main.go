@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // ─── DBF reader ──────────────────────────────────────────────────────────────
@@ -188,6 +188,28 @@ func date(rec map[string]string, key string) sql.NullTime {
 	return sql.NullTime{Time: t, Valid: true}
 }
 
+// strVal returns the string value or nil for use with pq.CopyIn.
+func strVal(rec map[string]string, key string) interface{} {
+	v := rec[key]
+	if v == "" {
+		return nil
+	}
+	return v
+}
+
+// dateVal returns a *time.Time or nil for use with pq.CopyIn.
+func dateVal(rec map[string]string, key string) interface{} {
+	v := rec[key]
+	if v == "" || v == "0000-00-00" {
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", v)
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
 func num(rec map[string]string, key string) float64 {
 	v := strings.TrimSpace(rec[key])
 	if v == "" {
@@ -211,21 +233,24 @@ func (imp *Importer) importGrpMst() error {
 	records := dbf.ReadAll()
 	log.Printf("GRPMST: %d records", len(records))
 
-	stmt, err := imp.db.Prepare(`
-		INSERT INTO grpmst (g_code, g_desc)
-		VALUES ($1, $2)
-		ON CONFLICT (g_code) DO UPDATE SET g_desc=EXCLUDED.g_desc`)
+	tx, err := imp.db.Begin()
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
-
-	for _, r := range records {
-		if _, err := stmt.Exec(r["g_code"], r["g_desc"]); err != nil {
-			log.Printf("  GRPMST skip %v: %v", r["g_code"], err)
-		}
+	stmt, err := tx.Prepare(pq.CopyIn("grpmst", "g_code", "g_desc"))
+	if err != nil {
+		tx.Rollback()
+		return err
 	}
-	return nil
+	for _, r := range records {
+		stmt.Exec(r["g_code"], r["g_desc"])
+	}
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importFamSt() error {
@@ -238,26 +263,28 @@ func (imp *Importer) importFamSt() error {
 	records := dbf.ReadAll()
 	log.Printf("FAMST: %d records", len(records))
 
-	stmt, err := imp.db.Prepare(`
-		INSERT INTO famst (ac_code, sub_code, "desc", a_name, amt, rmk, rate, per, opb, "date", cat, dia)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (ac_code) DO UPDATE SET
-			"desc"=EXCLUDED."desc", amt=EXCLUDED.amt, opb=EXCLUDED.opb`)
+	tx, err := imp.db.Begin()
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
-
-	for _, r := range records {
-		if _, err := stmt.Exec(
-			r["ac_code"], str(r, "sub_code"), r["desc"], str(r, "a_name"),
-			num(r, "amt"), str(r, "rmk"), num(r, "rate"), num(r, "per"),
-			num(r, "opb"), date(r, "date"), str(r, "cat"), str(r, "dia"),
-		); err != nil {
-			log.Printf("  FAMST skip %v: %v", r["ac_code"], err)
-		}
+	stmt, err := tx.Prepare(pq.CopyIn("famst", "ac_code", "sub_code", "desc", "a_name", "amt", "rmk", "rate", "per", "opb", "date", "cat", "dia"))
+	if err != nil {
+		tx.Rollback()
+		return err
 	}
-	return nil
+	for _, r := range records {
+		stmt.Exec(
+			r["ac_code"], strVal(r, "sub_code"), r["desc"], strVal(r, "a_name"),
+			num(r, "amt"), strVal(r, "rmk"), num(r, "rate"), num(r, "per"),
+			num(r, "opb"), dateVal(r, "date"), strVal(r, "cat"), strVal(r, "dia"),
+		)
+	}
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importItem() error {
@@ -270,27 +297,40 @@ func (imp *Importer) importItem() error {
 	records := dbf.ReadAll()
 	log.Printf("ITEM: %d records", len(records))
 
+	tx, err := imp.db.Begin()
+	if err != nil {
+		return err
+	}
+	cols := []string{
+		"itcd", "set_code", "desc", "fac", "stamp", "purity", "melt",
+		"gross_wt", "net_wt", "ghat_wt", "kundan_wt", "extra_wt", "gold_wt",
+		"kundn_wt", "nakash_wt", "stone_wt", "prl_wt",
+		"rby_ct", "rby_gm", "eme_ct", "eme_gm", "plk_ct", "plk_gm",
+		"stn1_name", "stn1_ct", "stn1_gm", "stn2_name", "stn2_ct", "stn2_gm",
+		"stn3_name", "stn3_ct", "stn3_gm",
+		"prls_gm", "prlb_gm", "rbyb_gm", "emeb_gm", "emebb_gm",
+		"prl1_name", "prl1_gm", "srby_gm", "seme_gm", "scz_gm", "snav_gm",
+		"prl2_name", "prl2_gm", "prl3_name", "prl3_gm",
+		"narr1", "narr2", "mk_chrg", "w_per",
+		"recpt_date", "lot_no", "issue_no", "issue_date",
+		"ac_code", "stk_code", "cat", "kp", "tag", "cat1", "cna", "exb",
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("item", cols...))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	for _, r := range records {
-		_, err := imp.db.Exec(`
-			INSERT INTO item (
-				itcd, set_code, "desc", fac, stamp, purity, melt,
-				gross_wt, net_wt, ghat_wt, kundan_wt, extra_wt, gold_wt,
-				kundn_wt, nakash_wt, stone_wt, prl_wt,
-				rby_ct, rby_gm, eme_ct, eme_gm, plk_ct, plk_gm,
-				stn1_name, stn1_ct, stn1_gm, stn2_name, stn2_ct, stn2_gm,
-				stn3_name, stn3_ct, stn3_gm,
-				prls_gm, prlb_gm, rbyb_gm, emeb_gm, emebb_gm,
-				prl1_name, prl1_gm, srby_gm, seme_gm, scz_gm, snav_gm,
-				prl2_name, prl2_gm, prl3_name, prl3_gm,
-				narr1, narr2, mk_chrg, w_per,
-				recpt_date, lot_no, issue_no, issue_date,
-				ac_code, stk_code, cat, kp, tag, cat1, cna, exb
-			) VALUES (
-				$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-				$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
-				$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,
-				$48,$49,$50,$51,$52,$53,$54,$55,$56,$57,$58,$59,$60,$61,$62,$63
-			) ON CONFLICT (itcd) DO NOTHING`,
+		rd := date(r, "recpt_date")
+		id := date(r, "issue_date")
+		var rdVal, idVal interface{}
+		if rd.Valid {
+			rdVal = rd.Time
+		}
+		if id.Valid {
+			idVal = id.Time
+		}
+		if _, err := stmt.Exec(
 			r["itcd"], str(r, "set"), r["desc"], num(r, "fac"),
 			str(r, "stamp"), str(r, "purity"), num(r, "melt"),
 			num(r, "gross_wt"), num(r, "net_wt"), num(r, "ghat_wt"),
@@ -308,15 +348,19 @@ func (imp *Importer) importItem() error {
 			str(r, "prl2_name"), num(r, "prl2_gm"),
 			str(r, "prl3_name"), num(r, "prl3_gm"),
 			str(r, "narr1"), str(r, "narr2"), num(r, "mk_chrg"), num(r, "w_per"),
-			date(r, "recpt_date"), str(r, "lot_no"), str(r, "issue_no"), date(r, "issue_date"),
+			rdVal, str(r, "lot_no"), str(r, "issue_no"), idVal,
 			str(r, "ac_code"), str(r, "stk_code"), str(r, "cat"),
 			str(r, "kp"), str(r, "tag"), str(r, "cat1"), str(r, "cna"), str(r, "exb"),
-		)
-		if err != nil {
+		); err != nil {
 			log.Printf("  ITEM skip %v: %v", r["itcd"], err)
 		}
 	}
-	return nil
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importLot() error {
@@ -329,22 +373,35 @@ func (imp *Importer) importLot() error {
 	records := dbf.ReadAll()
 	log.Printf("LOT: %d records", len(records))
 
+	tx, err := imp.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("lot",
+		"t_no", "t_date", "ac_code", "party", "lot_no",
+		"nos", "gross_wt", "kundan_wt", "nakash_wt", "stone_wt", "pearl_wt",
+		"nos1", "gross_wt1", "adj_wt", "kundan_wt1", "nakash_wt1",
+		"stone_wt1", "pearl_wt1", "amt", "g_rt", "desc",
+	))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	for _, r := range records {
-		_, err := imp.db.Exec(`
-			INSERT INTO lot (t_no, t_date, ac_code, party, lot_no, nos, gross_wt, kundan_wt, nakash_wt, stone_wt, pearl_wt, nos1, gross_wt1, adj_wt, kundan_wt1, nakash_wt1, stone_wt1, pearl_wt1, amt, g_rt, "desc")
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-			ON CONFLICT (t_no) DO NOTHING`,
-			r["t_no"], date(r, "t_date"), str(r, "ac_code"), str(r, "party"), r["lot_no"],
+		stmt.Exec(
+			r["t_no"], dateVal(r, "t_date"), strVal(r, "ac_code"), strVal(r, "party"), r["lot_no"],
 			int(num(r, "nos")), num(r, "gross_wt"), num(r, "kundan_wt"), num(r, "nakash_wt"),
 			num(r, "stone_wt"), num(r, "pearl_wt"), int(num(r, "nos1")), num(r, "gross_wt1"),
 			num(r, "adj_wt"), num(r, "kundan_wt1"), num(r, "nakash_wt1"),
-			num(r, "stone_wt1"), num(r, "pearl_wt1"), num(r, "amt"), num(r, "g_rt"), str(r, "desc"),
+			num(r, "stone_wt1"), num(r, "pearl_wt1"), num(r, "amt"), num(r, "g_rt"), strVal(r, "desc"),
 		)
-		if err != nil {
-			log.Printf("  LOT skip %v: %v", r["t_no"], err)
-		}
 	}
-	return nil
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importRate() error {
@@ -357,23 +414,29 @@ func (imp *Importer) importRate() error {
 	records := dbf.ReadAll()
 	log.Printf("RATE: %d records", len(records))
 
+	tx, err := imp.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("rate", "date", "rate", "rate1", "s_rate", "gtag", "qtag", "xtag", "sprn"))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	for _, r := range records {
-		d := date(r, "date")
-		if !d.Valid {
+		d := dateVal(r, "date")
+		if d == nil {
 			continue
 		}
-		_, err := imp.db.Exec(`
-			INSERT INTO rate ("date", rate, rate1, s_rate, gtag, qtag, xtag, sprn)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-			ON CONFLICT ("date") DO UPDATE SET rate=EXCLUDED.rate, rate1=EXCLUDED.rate1, s_rate=EXCLUDED.s_rate`,
-			d.Time, num(r, "rate"), num(r, "rate1"), num(r, "s_rate"),
-			r["gtag"], r["qtag"], r["xtag"], r["sprn"],
-		)
-		if err != nil {
-			log.Printf("  RATE skip: %v", err)
-		}
+		stmt.Exec(d, num(r, "rate"), num(r, "rate1"), num(r, "s_rate"),
+			r["gtag"], r["qtag"], r["xtag"], r["sprn"])
 	}
-	return nil
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importSale() error {
@@ -386,31 +449,46 @@ func (imp *Importer) importSale() error {
 	records := dbf.ReadAll()
 	log.Printf("SALE: %d records", len(records))
 
+	tx, err := imp.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("sale",
+		"vouch_no", "ovno", "pre", "vouch_no1", "vouch_date",
+		"ac_code", "name", "add1", "add2", "phone_no", "phone_no1", "sman",
+		"nos", "gross_wt", "kundn_wt", "nakash_wt", "stone_wt", "net_wt",
+		"net_per", "kdn_per", "nks_per", "net_pure", "kdn_pure", "nks_pure",
+		"stn_amt", "stn_rate", "stn_pure", "pure_wt", "discount", "pure_final",
+		"narr", "narr1", "btype",
+	))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	for _, r := range records {
-		d := date(r, "vouch_date")
-		if !d.Valid {
+		d := dateVal(r, "vouch_date")
+		if d == nil {
 			continue
 		}
-		_, err := imp.db.Exec(`
-			INSERT INTO sale (vouch_no, ovno, pre, vouch_no1, vouch_date, ac_code, name, add1, add2, phone_no, phone_no1, sman, nos, gross_wt, kundn_wt, nakash_wt, stone_wt, net_wt, net_per, kdn_per, nks_per, net_pure, kdn_pure, nks_pure, stn_amt, stn_rate, stn_pure, pure_wt, discount, pure_final, narr, narr1, btype)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
-			ON CONFLICT (vouch_no) DO NOTHING`,
-			r["vouch_no"], str(r, "ovno"), str(r, "pre"), str(r, "vouch_no1"),
-			d.Time, str(r, "ac_code"), str(r, "name"), str(r, "add1"), str(r, "add2"),
-			str(r, "phone_no"), str(r, "phone_no1"), str(r, "sman"),
+		stmt.Exec(
+			r["vouch_no"], strVal(r, "ovno"), strVal(r, "pre"), strVal(r, "vouch_no1"),
+			d, strVal(r, "ac_code"), strVal(r, "name"), strVal(r, "add1"), strVal(r, "add2"),
+			strVal(r, "phone_no"), strVal(r, "phone_no1"), strVal(r, "sman"),
 			int(num(r, "nos")), num(r, "gross_wt"), num(r, "kundn_wt"),
 			num(r, "nakash_wt"), num(r, "stone_wt"), num(r, "net_wt"),
 			num(r, "net_per"), num(r, "kdn_per"), num(r, "nks_per"),
 			num(r, "net_pure"), num(r, "kdn_pure"), num(r, "nks_pure"),
 			num(r, "stn_amt"), num(r, "stn_rate"), num(r, "stn_pure"),
 			num(r, "pure_wt"), num(r, "discount"), num(r, "pure_final"),
-			str(r, "narr"), str(r, "narr1"), str(r, "btype"),
+			strVal(r, "narr"), strVal(r, "narr1"), strVal(r, "btype"),
 		)
-		if err != nil {
-			log.Printf("  SALE skip %v: %v", r["vouch_no"], err)
-		}
 	}
-	return nil
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (imp *Importer) importPurch() error {
@@ -423,28 +501,59 @@ func (imp *Importer) importPurch() error {
 	records := dbf.ReadAll()
 	log.Printf("PURCH: %d records", len(records))
 
+	tx, err := imp.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("purch",
+		"vouch_no", "pre", "vouch_no1", "vouch_date",
+		"ac_code", "name", "add1", "add2",
+		"rate", "gross_wt", "net_wt", "bill_amt",
+		"narr", "rmk", "tag", "post",
+	))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
 	for _, r := range records {
-		d := date(r, "vouch_date")
-		if !d.Valid {
+		d := dateVal(r, "vouch_date")
+		if d == nil {
 			continue
 		}
-		_, err := imp.db.Exec(`
-			INSERT INTO purch (vouch_no, pre, vouch_no1, vouch_date, ac_code, name, add1, add2, rate, gross_wt, net_wt, bill_amt, narr, rmk, tag, post)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-			ON CONFLICT (vouch_no) DO NOTHING`,
-			r["vouch_no"], str(r, "pre"), str(r, "vouch_no1"), d.Time,
-			str(r, "ac_code"), str(r, "name"), str(r, "add1"), str(r, "add2"),
+		stmt.Exec(
+			r["vouch_no"], strVal(r, "pre"), strVal(r, "vouch_no1"), d,
+			strVal(r, "ac_code"), strVal(r, "name"), strVal(r, "add1"), strVal(r, "add2"),
 			num(r, "rate"), num(r, "gross_wt"), num(r, "net_wt"), num(r, "bill_amt"),
-			str(r, "narr"), str(r, "rmk"), str(r, "tag"), str(r, "post"),
+			strVal(r, "narr"), strVal(r, "rmk"), strVal(r, "tag"), strVal(r, "post"),
 		)
-		if err != nil {
-			log.Printf("  PURCH skip %v: %v", r["vouch_no"], err)
+	}
+	if _, err := stmt.Exec(); err != nil {
+		tx.Rollback()
+		return err
+	}
+	stmt.Close()
+	return tx.Commit()
+}
+
+func (imp *Importer) truncate() error {
+	tables := []string{"purch", "sale", "rate", "lot", "item", "famst", "grpmst"}
+	for _, t := range tables {
+		if _, err := imp.db.Exec("TRUNCATE TABLE " + t + " CASCADE"); err != nil {
+			return fmt.Errorf("truncate %s: %w", t, err)
 		}
+		log.Printf("  truncated %s", t)
 	}
 	return nil
 }
 
-func (imp *Importer) Run() {
+func (imp *Importer) Run(doTruncate bool) {
+	if doTruncate {
+		log.Println("==> Truncating all tables...")
+		if err := imp.truncate(); err != nil {
+			log.Fatalf("truncate failed: %v", err)
+		}
+	}
+
 	steps := []struct {
 		name string
 		fn   func() error
@@ -472,6 +581,7 @@ func (imp *Importer) Run() {
 func main() {
 	dbfDir := flag.String("dbf", ".", "directory containing .DBF files")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN (or set DATABASE_URL env)")
+	truncate := flag.Bool("truncate", false, "truncate all tables before importing")
 	flag.Parse()
 
 	if *dsn == "" {
@@ -492,5 +602,5 @@ func main() {
 	}
 
 	imp := &Importer{db: db, dbfDir: *dbfDir}
-	imp.Run()
+	imp.Run(*truncate)
 }

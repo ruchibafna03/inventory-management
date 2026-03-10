@@ -1,6 +1,6 @@
 module github.com/val/inventory
 
-go 1.22
+go 1.24.0
 
 require (
 	github.com/go-chi/chi/v5 v5.0.12
@@ -10,4 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 )
 
-require github.com/mattn/go-sqlite3 v1.14.16 // indirect
+require (
+	github.com/mattn/go-sqlite3 v1.14.16 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+)
