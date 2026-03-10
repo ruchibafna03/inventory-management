@@ -294,8 +294,22 @@ func (imp *Importer) importItem() error {
 	}
 	defer dbf.Close()
 
-	records := dbf.ReadAll()
-	log.Printf("ITEM: %d records", len(records))
+	allRecords := dbf.ReadAll()
+	seen := map[string]bool{}
+	records := allRecords[:0]
+	for _, r := range allRecords {
+		if !seen[r["itcd"]] {
+			seen[r["itcd"]] = true
+			records = append(records, r)
+		}
+	}
+	log.Printf("ITEM: %d records (%d dupes dropped)", len(records), len(allRecords)-len(records))
+
+	// Use a temp table (no constraints) for COPY, then INSERT ... ON CONFLICT.
+	imp.db.Exec(`DROP TABLE IF EXISTS item_tmp`)
+	if _, err := imp.db.Exec(`CREATE TEMP TABLE item_tmp (LIKE item)`); err != nil {
+		return fmt.Errorf("create item_tmp: %w", err)
+	}
 
 	tx, err := imp.db.Begin()
 	if err != nil {
@@ -315,51 +329,45 @@ func (imp *Importer) importItem() error {
 		"recpt_date", "lot_no", "issue_no", "issue_date",
 		"ac_code", "stk_code", "cat", "kp", "tag", "cat1", "cna", "exb",
 	}
-	stmt, err := tx.Prepare(pq.CopyIn("item", cols...))
+	stmt, err := tx.Prepare(pq.CopyIn("item_tmp", cols...))
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 	for _, r := range records {
-		rd := date(r, "recpt_date")
-		id := date(r, "issue_date")
-		var rdVal, idVal interface{}
-		if rd.Valid {
-			rdVal = rd.Time
-		}
-		if id.Valid {
-			idVal = id.Time
-		}
-		if _, err := stmt.Exec(
-			r["itcd"], str(r, "set"), r["desc"], num(r, "fac"),
-			str(r, "stamp"), str(r, "purity"), num(r, "melt"),
+		stmt.Exec(
+			r["itcd"], strVal(r, "set"), r["desc"], num(r, "fac"),
+			strVal(r, "stamp"), strVal(r, "purity"), num(r, "melt"),
 			num(r, "gross_wt"), num(r, "net_wt"), num(r, "ghat_wt"),
 			num(r, "kundan_wt"), num(r, "extra_wt"), num(r, "gold_wt"),
 			num(r, "kundn_wt"), num(r, "nakash_wt"), num(r, "stone_wt"), num(r, "prl_wt"),
 			num(r, "rby_ct"), num(r, "rby_gm"), num(r, "eme_ct"), num(r, "eme_gm"),
 			num(r, "plk_ct"), num(r, "plk_gm"),
-			str(r, "stn1_name"), num(r, "stn1_ct"), num(r, "stn1_gm"),
-			str(r, "stn2_name"), num(r, "stn2_ct"), num(r, "stn2_gm"),
-			str(r, "stn3_name"), num(r, "stn3_ct"), num(r, "stn3_gm"),
+			strVal(r, "stn1_name"), num(r, "stn1_ct"), num(r, "stn1_gm"),
+			strVal(r, "stn2_name"), num(r, "stn2_ct"), num(r, "stn2_gm"),
+			strVal(r, "stn3_name"), num(r, "stn3_ct"), num(r, "stn3_gm"),
 			num(r, "prls_gm"), num(r, "prlb_gm"), num(r, "rbyb_gm"),
 			num(r, "emeb_gm"), num(r, "emebb_gm"),
-			str(r, "prl1_name"), num(r, "prl1_gm"),
+			strVal(r, "prl1_name"), num(r, "prl1_gm"),
 			num(r, "srby_gm"), num(r, "seme_gm"), num(r, "scz_gm"), num(r, "snav_gm"),
-			str(r, "prl2_name"), num(r, "prl2_gm"),
-			str(r, "prl3_name"), num(r, "prl3_gm"),
-			str(r, "narr1"), str(r, "narr2"), num(r, "mk_chrg"), num(r, "w_per"),
-			rdVal, str(r, "lot_no"), str(r, "issue_no"), idVal,
-			str(r, "ac_code"), str(r, "stk_code"), str(r, "cat"),
-			str(r, "kp"), str(r, "tag"), str(r, "cat1"), str(r, "cna"), str(r, "exb"),
-		); err != nil {
-			log.Printf("  ITEM skip %v: %v", r["itcd"], err)
-		}
+			strVal(r, "prl2_name"), num(r, "prl2_gm"),
+			strVal(r, "prl3_name"), num(r, "prl3_gm"),
+			strVal(r, "narr1"), strVal(r, "narr2"), num(r, "mk_chrg"), num(r, "w_per"),
+			dateVal(r, "recpt_date"), strVal(r, "lot_no"), strVal(r, "issue_no"), dateVal(r, "issue_date"),
+			strVal(r, "ac_code"), strVal(r, "stk_code"), strVal(r, "cat"),
+			strVal(r, "kp"), strVal(r, "tag"), strVal(r, "cat1"), strVal(r, "cna"), strVal(r, "exb"),
+		)
 	}
 	if _, err := stmt.Exec(); err != nil {
 		tx.Rollback()
 		return err
 	}
 	stmt.Close()
+	// Move from temp to real table; set timestamps since COPY doesn't supply them.
+	if _, err := tx.Exec(`INSERT INTO item SELECT *, NOW(), NOW() FROM item_tmp ON CONFLICT (itcd) DO NOTHING`); err != nil {
+		tx.Rollback()
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -370,8 +378,16 @@ func (imp *Importer) importLot() error {
 	}
 	defer dbf.Close()
 
-	records := dbf.ReadAll()
-	log.Printf("LOT: %d records", len(records))
+	allRecords := dbf.ReadAll()
+	seen := map[string]bool{}
+	records := allRecords[:0]
+	for _, r := range allRecords {
+		if !seen[r["t_no"]] {
+			seen[r["t_no"]] = true
+			records = append(records, r)
+		}
+	}
+	log.Printf("LOT: %d records (%d dupes dropped)", len(records), len(allRecords)-len(records))
 
 	tx, err := imp.db.Begin()
 	if err != nil {
@@ -446,8 +462,16 @@ func (imp *Importer) importSale() error {
 	}
 	defer dbf.Close()
 
-	records := dbf.ReadAll()
-	log.Printf("SALE: %d records", len(records))
+	allRecords := dbf.ReadAll()
+	seen := map[string]bool{}
+	records := allRecords[:0]
+	for _, r := range allRecords {
+		if !seen[r["vouch_no"]] {
+			seen[r["vouch_no"]] = true
+			records = append(records, r)
+		}
+	}
+	log.Printf("SALE: %d records (%d dupes dropped)", len(records), len(allRecords)-len(records))
 
 	tx, err := imp.db.Begin()
 	if err != nil {
@@ -535,10 +559,9 @@ func (imp *Importer) importPurch() error {
 	return tx.Commit()
 }
 
-func (imp *Importer) truncate() error {
-	tables := []string{"purch", "sale", "rate", "lot", "item", "famst", "grpmst"}
+func (imp *Importer) truncateInTx(tx *sql.Tx, tables ...string) error {
 	for _, t := range tables {
-		if _, err := imp.db.Exec("TRUNCATE TABLE " + t + " CASCADE"); err != nil {
+		if _, err := tx.Exec("TRUNCATE TABLE " + t + " CASCADE"); err != nil {
 			return fmt.Errorf("truncate %s: %w", t, err)
 		}
 		log.Printf("  truncated %s", t)
@@ -549,8 +572,16 @@ func (imp *Importer) truncate() error {
 func (imp *Importer) Run(doTruncate bool) {
 	if doTruncate {
 		log.Println("==> Truncating all tables...")
-		if err := imp.truncate(); err != nil {
+		tx, err := imp.db.Begin()
+		if err != nil {
+			log.Fatalf("truncate: begin: %v", err)
+		}
+		if err := imp.truncateInTx(tx, "purch", "sale", "rate", "lot", "item", "famst", "grpmst"); err != nil {
+			tx.Rollback()
 			log.Fatalf("truncate failed: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			log.Fatalf("truncate commit: %v", err)
 		}
 	}
 
