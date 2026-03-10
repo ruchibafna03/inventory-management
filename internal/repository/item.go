@@ -39,7 +39,7 @@ func (r *ItemRepo) List(page, perPage int, search, cat string) ([]models.Item, i
 
 	args = append(args, perPage, offset)
 	query := fmt.Sprintf(`SELECT * FROM item %s ORDER BY itcd LIMIT $%d OFFSET $%d`, where, i, i+1)
-	var items []models.Item
+	items := []models.Item{}
 	if err := r.db.Select(&items, query, args...); err != nil {
 		return nil, 0, err
 	}

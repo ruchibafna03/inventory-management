@@ -44,7 +44,7 @@ func (r *IssueRepo) List(page, perPage int, acCode, tag string) ([]models.Issue,
 		LEFT JOIN famst f ON f.ac_code = i.ac_code
 		%s ORDER BY i.t_date DESC LIMIT $%d OFFSET $%d`, where, i, i+1)
 
-	var issues []models.Issue
+	issues := []models.Issue{}
 	if err := r.db.Select(&issues, query, args...); err != nil {
 		return nil, 0, err
 	}
@@ -62,7 +62,7 @@ func (r *IssueRepo) Get(tNo string) (*models.Issue, error) {
 		return nil, err
 	}
 
-	var details []models.IssueDetail
+	details := []models.IssueDetail{}
 	if err := r.db.Select(&details, `SELECT * FROM isdetl WHERE t_no = $1 ORDER BY id`, tNo); err != nil {
 		return nil, err
 	}

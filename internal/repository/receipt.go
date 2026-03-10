@@ -39,7 +39,7 @@ func (r *ReceiptRepo) List(page, perPage int, acCode string) ([]models.Receipt, 
 		LEFT JOIN famst f ON f.ac_code = r.ac_code
 		%s ORDER BY r.t_date DESC LIMIT $%d OFFSET $%d`, where, i, i+1)
 
-	var receipts []models.Receipt
+	receipts := []models.Receipt{}
 	if err := r.db.Select(&receipts, query, args...); err != nil {
 		return nil, 0, err
 	}
@@ -57,7 +57,7 @@ func (r *ReceiptRepo) Get(tNo string) (*models.Receipt, error) {
 		return nil, err
 	}
 
-	var details []models.ReceiptDetail
+	details := []models.ReceiptDetail{}
 	if err := r.db.Select(&details, `SELECT * FROM rcdetl WHERE t_no = $1 ORDER BY id`, tNo); err != nil {
 		return nil, err
 	}

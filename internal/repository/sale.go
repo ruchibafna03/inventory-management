@@ -34,7 +34,7 @@ func (r *SaleRepo) List(page, perPage int, acCode string) ([]models.Sale, int, e
 
 	args = append(args, perPage, offset)
 	query := fmt.Sprintf(`SELECT * FROM sale %s ORDER BY vouch_date DESC LIMIT $%d OFFSET $%d`, where, i, i+1)
-	var sales []models.Sale
+	sales := []models.Sale{}
 	if err := r.db.Select(&sales, query, args...); err != nil {
 		return nil, 0, err
 	}
@@ -116,7 +116,7 @@ func (r *PurchaseRepo) List(page, perPage int, acCode string) ([]models.Purchase
 
 	args = append(args, perPage, offset)
 	query := fmt.Sprintf(`SELECT * FROM purch %s ORDER BY vouch_date DESC LIMIT $%d OFFSET $%d`, where, i, i+1)
-	var purchases []models.Purchase
+	purchases := []models.Purchase{}
 	if err := r.db.Select(&purchases, query, args...); err != nil {
 		return nil, 0, err
 	}

@@ -16,7 +16,7 @@ func NewAccountRepo(db *sqlx.DB) *AccountRepo {
 }
 
 func (r *AccountRepo) ListGroups() ([]models.GroupMaster, error) {
-	var groups []models.GroupMaster
+	groups := []models.GroupMaster{}
 	err := r.db.Select(&groups, `SELECT * FROM grpmst ORDER BY g_code`)
 	return groups, err
 }
@@ -60,7 +60,7 @@ func (r *AccountRepo) List(page, perPage int, search, gCode string) ([]models.Ac
 
 	args = append(args, perPage, offset)
 	query := fmt.Sprintf(`SELECT * FROM famst %s ORDER BY ac_code LIMIT $%d OFFSET $%d`, where, i, i+1)
-	var accounts []models.AccountMaster
+	accounts := []models.AccountMaster{}
 	if err := r.db.Select(&accounts, query, args...); err != nil {
 		return nil, 0, err
 	}
@@ -120,7 +120,7 @@ func (r *AccountRepo) OutstandingBalances(gCode string) ([]models.AccountMaster,
 		where = " WHERE g_code = $1"
 		args = append(args, gCode)
 	}
-	var accounts []models.AccountMaster
+	accounts := []models.AccountMaster{}
 	err := r.db.Select(&accounts, `SELECT * FROM famst`+where+` ORDER BY ac_code`, args...)
 	return accounts, err
 }

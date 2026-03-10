@@ -14,7 +14,7 @@ func NewRateRepo(db *sqlx.DB) *RateRepo {
 }
 
 func (r *RateRepo) List() ([]models.Rate, error) {
-	var rates []models.Rate
+	rates := []models.Rate{}
 	err := r.db.Select(&rates, `SELECT * FROM rate ORDER BY date DESC`)
 	return rates, err
 }
@@ -57,7 +57,7 @@ func (r *LotRepo) List(acCode string) ([]models.Lot, error) {
 		where = " WHERE l.ac_code = $1"
 		args = append(args, acCode)
 	}
-	var lots []models.Lot
+	lots := []models.Lot{}
 	err := r.db.Select(&lots, `SELECT * FROM lot`+where+` ORDER BY t_date DESC`, args...)
 	return lots, err
 }
