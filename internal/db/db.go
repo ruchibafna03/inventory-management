@@ -25,5 +25,6 @@ func Connect() *sqlx.DB {
 	db.SetMaxIdleConns(5)
 
 	fmt.Println("db: connected to PostgreSQL")
-	return db
+	// Unsafe allows SELECT * queries where the DB has more columns than the struct.
+	return db.Unsafe()
 }
